@@ -1,2 +1,2 @@
-# ocr-character-recognition-cnn-ou-academic-engineering-projects
+# ocr-character-recognition-cnn
 Convolutional Neural Network for EMNIST character recognition using TensorFlow and Streamlit.
