@@ -1,6 +1,17 @@
 # EMNIST Character Recognition
 
-A CNN trained on the EMNIST Balanced dataset, served through a FastAPI endpoint. The included Streamlit app is an optional client for uploading or drawing a character.
+A CNN trained on the EMNIST Balanced dataset. The API is deployed on [Render](https://render.com) and the Streamlit client is deployed on [Streamlit Community Cloud](https://streamlit.io/cloud) — training happens locally; only the trained artifacts are shipped.
+
+## Project files
+
+| File | Purpose |
+|---|---|
+| `training.py` | Loads the `.mat` dataset, trains the CNN, saves `modelo_emnist_balanced.keras` and `label_map.json` |
+| `verification.py` | Plots a few real samples after preprocessing, to visually confirm orientation before committing to a full training run |
+| `api.py` | FastAPI app: preprocesses incoming images and serves predictions from the trained model |
+| `main.py` | Streamlit client (upload or draw a character, calls the API) |
+| `test_preprocess.py` | Unit test for the API's image preprocessing |
+| `label_map.json` | Maps model output indices to ASCII codes |
 
 ## Requirements
 
@@ -15,107 +26,109 @@ conda env create -f environment.yml
 conda activate emnist-api
 ```
 
-## Get the data and train
+## 1. Train the model (local)
 
 Download the MATLAB-format archive from the [official NIST EMNIST page](https://www.nist.gov/itl/products-and-services/emnist-dataset). Extract `emnist-balanced.mat` into a `matlab` folder in the project:
 
 ```text
-codigo-IA/
+AI-CNN/
   matlab/
     emnist-balanced.mat
 ```
 
-Train the model and create the API artifacts:
+Before running a full training pass, sanity-check the orientation fix on real data:
 
 ```powershell
-python treino.py
+python verification.py
 ```
 
-This writes `modelo_emnist_balanced.keras` and `label_map.json` beside the scripts. The training dataset and generated model files are excluded from Git; train the model locally and transfer those two artifacts to the server.
+This opens a grid of sample characters — confirm they're readable and match their titles. Then train:
 
-## Run the API locally
+```powershell
+python training.py
+```
 
-Set a private API key in Anaconda Prompt or PowerShell, then start the server:
+This writes `modelo_emnist_balanced.keras` and `label_map.json` beside the scripts. The raw dataset stays out of Git; only the two trained artifacts are meant to travel further.
+
+## 2. Run locally (optional, before deploying)
+
+API:
 
 ```powershell
 $env:API_KEY = "replace-with-a-long-random-secret"
 python -m uvicorn api:app --host 0.0.0.0 --port 8000
 ```
 
-Interactive API documentation is available at `http://127.0.0.1:8000/docs`; the unauthenticated health check is `http://127.0.0.1:8000/health`.
+Interactive docs at `http://127.0.0.1:8000/docs`; unauthenticated health check at `http://127.0.0.1:8000/health`.
 
-Send an image with the API key in the `X-API-Key` header:
-
-```bash
-curl -X POST http://127.0.0.1:8000/predict \
-  -H "X-API-Key: replace-with-a-long-random-secret" \
-  -F "file=@character.png"
-```
-
-The response contains the predicted character, class index, and confidence. Accepted image formats are those supported by Pillow; uploads are limited to 10 MB.
-
-## Run the Streamlit client
-
-Keep the API running in one terminal. In another, set the same key and the API URL, then run:
+Streamlit client, in a second terminal, with the API still running:
 
 ```powershell
 $env:API_KEY = "replace-with-a-long-random-secret"
 $env:API_URL = "http://127.0.0.1:8000"
-streamlit run teste.py
+streamlit run main.py
 ```
 
-## Deploy on an EC2 instance
+## 3. Tests
 
-1. Launch an Ubuntu 24.04, x86_64 EC2 instance. For inference, use an instance with at least 4 GiB of memory. Training can be done on your computer; the server only needs `modelo_emnist_balanced.keras` and `label_map.json`.
-2. In the EC2 security group, allow SSH from your own IP. For a quick public test, also allow inbound TCP port `8000` from the clients that need access. Restricting the source IP is safer than allowing `0.0.0.0/0`.
-3. Install Git and Miniforge on the instance, clone this repository, and create the environment:
+```powershell
+pytest test_preprocess.py -v
+```
 
-   ```bash
-   sudo apt-get update
-   sudo apt-get install -y git wget
-   wget -O Miniforge3.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
-   bash Miniforge3.sh -b -p "$HOME/miniforge3"
-   source "$HOME/miniforge3/etc/profile.d/conda.sh"
-   git clone YOUR_GITHUB_REPOSITORY_URL codigo-IA
-   cd codigo-IA
-   conda env create -f environment.yml
+Covers the image preprocessing in isolation — not a substitute for testing the deployed model with real drawings.
+
+## 4. Deploy the API on Render
+
+1. Push the repository to GitHub.
+2. In the Render dashboard, **New +** → **Web Service**, and connect the repository.
+3. Configure:
+
+   | Setting | Value |
+   |---|---|
+   | Build command | `pip install -r requirements.txt` |
+   | Start command | `uvicorn api:app --host 0.0.0.0 --port $PORT` |
+   | Health check path | `/health` |
+
+   Render assigns the port dynamically via `$PORT` — don't hardcode `8000` here.
+4. Under **Environment**, add `API_KEY` with a long random value.
+5. **Model artifacts:** Render's free-tier filesystem is ephemeral and only contains what's in the repository at build time. `modelo_emnist_balanced.keras` and `label_map.json` need to be committed to Git so they're present at deploy — **confirm this is how you did it**; if instead you're using a persistent disk or pulling the model from external storage at startup, that section needs different instructions.
+6. Once deployed, the service is live at `https://YOUR-SERVICE-NAME.onrender.com`, already served over HTTPS with no extra configuration.
+
+Free-tier services spin down after 15 minutes of inactivity and take 30–60 seconds to wake up on the next request — expect a slow first response after idle periods.
+
+## 5. Deploy the Streamlit frontend on Streamlit Community Cloud
+
+1. Push the same repository to GitHub (if not already).
+2. At [share.streamlit.io](https://share.streamlit.io), **New app**, select the repo/branch, and set the main file path to `main.py`.
+3. Under **Advanced settings → Secrets**, paste (root-level keys, no `[section]`, so they're readable via `os.getenv`):
+
+   ```toml
+   API_KEY = "same value as set on Render"
+   API_URL = "https://YOUR-SERVICE-NAME.onrender.com"
+   MIN_CONFIDENCE = "0.85"
    ```
 
-4. Copy the trained artifacts from your computer into the project directory on EC2:
+4. Deploy. The app is served at `https://YOUR-APP-NAME.streamlit.app`, also HTTPS by default.
 
-   ```bash
-   scp -i YOUR_KEY.pem modelo_emnist_balanced.keras label_map.json ubuntu@EC2_PUBLIC_IP:~/codigo-IA/
-   ```
+## Send a test request directly to the API
 
-5. Store an API key outside the repository and create a `systemd` service so the API restarts after a reboot:
+```bash
+curl -X POST https://YOUR-SERVICE-NAME.onrender.com/predict \
+  -H "X-API-Key: replace-with-a-long-random-secret" \
+  -F "file=@character.png"
+```
 
-   ```bash
-   sudo tee /etc/emnist-api.env >/dev/null <<EOF
-   API_KEY=$(openssl rand -hex 32)
-   EOF
-   sudo chmod 600 /etc/emnist-api.env
-   sudo tee /etc/systemd/system/emnist-api.service >/dev/null <<'EOF'
-   [Unit]
-   Description=EMNIST Character Recognition API
-   After=network.target
+Response includes the predicted character, class index, and confidence. Accepted formats are those Pillow supports; uploads are limited to 10 MB.
 
-   [Service]
-   User=ubuntu
-   WorkingDirectory=/home/ubuntu/codigo-IA
-   EnvironmentFile=/etc/emnist-api.env
-   ExecStart=/home/ubuntu/miniforge3/envs/emnist-api/bin/uvicorn api:app --host 0.0.0.0 --port 8000
-   Restart=on-failure
+## Security notes
 
-   [Install]
-   WantedBy=multi-user.target
-   EOF
-   sudo systemctl daemon-reload
-   sudo systemctl enable --now emnist-api
-   sudo systemctl status emnist-api
-   ```
+- Both Render and Streamlit Community Cloud provision HTTPS automatically on their default subdomains — no reverse proxy or certificate setup needed for this deployment.
+- Never commit `API_KEY` values, the raw dataset, or `.streamlit/secrets.toml` to Git.
+- If a key is ever exposed (logs, a public commit, etc.), rotate it immediately in both Render's environment settings and Streamlit's secrets.
+- A custom domain is optional; Render and Streamlit Cloud both issue TLS certificates for custom domains automatically if you add one later.
 
-The public endpoint is `http://EC2_PUBLIC_IP:8000/predict`. Read the generated key from `/etc/emnist-api.env` and send it in the `X-API-Key` header. Check logs with `sudo journalctl -u emnist-api -f`.
+## Live Demo
 
-## Security note
+Try it: **[[URL do teu Streamlit app](https://ocr-character-recognition-cnn-bvptx3xexfwzamrjfzg5o2.streamlit.app/)]**
 
-Direct public HTTP is suitable only for a temporary demo: the API key is not encrypted in transit. For a real public deployment, put the API behind HTTPS using a domain and a reverse proxy such as Nginx, and expose port 443 instead of exposing Uvicorn directly. Do not commit API keys, dataset files, or trained model artifacts to GitHub.
+> First request may take up to ~50s while the free-tier backend wakes up from inactivity — subsequent requests are fast.
