@@ -3,6 +3,6 @@ __pycache__/
 .env
 .streamlit/secrets.toml
 matlab/
-modelo_emnist_balanced.keras
-label_map.json
+#modelo_emnist_balanced.keras
+#label_map.json
 grafico_resultado.png
