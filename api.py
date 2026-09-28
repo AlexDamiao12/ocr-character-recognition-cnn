@@ -69,6 +69,7 @@ def preprocess_image_for_model(image: Image.Image) -> np.ndarray:
 
     # EMNIST: fundo preto e carácter branco
     pixels = 255 - pixels
+    pixels = np.fliplr(pixels)
 
     # Normalizar para [0, 1] e adicionar batch + channel
     return pixels.astype(np.float32)[None, ..., None] / 255.0
