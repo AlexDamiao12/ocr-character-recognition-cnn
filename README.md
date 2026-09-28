@@ -129,6 +129,6 @@ Response includes the predicted character, class index, and confidence. Accepted
 
 ## Live Demo
 
-Try it: **[[URL do teu Streamlit app](https://ocr-character-recognition-cnn-bvptx3xexfwzamrjfzg5o2.streamlit.app/)]**
+Try it: **[https://ocr-character-recognition-cnn.streamlit.app/]**
 
 > First request may take up to ~50s while the free-tier backend wakes up from inactivity — subsequent requests are fast.
