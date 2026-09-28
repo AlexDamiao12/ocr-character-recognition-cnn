@@ -53,7 +53,7 @@ def preprocess_image_for_model(image: Image.Image) -> np.ndarray:
     padded.paste(grayscale, ((size - width) // 2, (size - height) // 2))
 
     pixels = np.asarray(padded.resize((28, 28), Image.Resampling.LANCZOS), dtype=np.uint8)
-    pixels = np.rot90(pixels, k=3)
+   
 
     # Match the training data exactly: the model was trained on black strokes over a
     # white background. Inverting dark inputs here makes the network see the wrong
