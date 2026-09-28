@@ -38,27 +38,40 @@ app = FastAPI(
 
 
 def preprocess_image_for_model(image: Image.Image) -> np.ndarray:
-    """Mirror the exact training preprocessing as closely as possible."""
+    """Preprocess image to match EMNIST training data."""
     grayscale = image.convert("L")
 
+    # Encontrar o carácter e remover espaço vazio à volta
     array = np.asarray(grayscale)
     mask = array < 200
+
     if mask.any():
         ys, xs = np.where(mask)
-        grayscale = grayscale.crop((xs.min(), ys.min(), xs.max() + 1, ys.max() + 1))
+        grayscale = grayscale.crop(
+            (xs.min(), ys.min(), xs.max() + 1, ys.max() + 1)
+        )
 
+    # Tornar a imagem quadrada
     width, height = grayscale.size
     size = max(width, height)
+
     padded = Image.new("L", (size, size), 255)
-    padded.paste(grayscale, ((size - width) // 2, (size - height) // 2))
+    padded.paste(
+        grayscale,
+        ((size - width) // 2, (size - height) // 2)
+    )
 
-    pixels = np.asarray(padded.resize((28, 28), Image.Resampling.LANCZOS), dtype=np.uint8)
-   
+    # Redimensionar para o formato esperado pela CNN
+    pixels = np.asarray(
+        padded.resize((28, 28), Image.Resampling.LANCZOS),
+        dtype=np.uint8
+    )
 
-    # Match the training data exactly: the model was trained on black strokes over a
-    # white background. Inverting dark inputs here makes the network see the wrong
-    # foreground/background polarity and produces garbage predictions.
-    return pixels.astype(np.float32)[None, ..., None] / np.float32(255.0)
+    # EMNIST: fundo preto e carácter branco
+    pixels = 255 - pixels
+
+    # Normalizar para [0, 1] e adicionar batch + channel
+    return pixels.astype(np.float32)[None, ..., None] / 255.0
 
 
 def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
