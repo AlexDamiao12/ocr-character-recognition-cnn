@@ -13,6 +13,10 @@ min_confidence = float(os.getenv("MIN_CONFIDENCE", "0.85"))
 
 st.set_page_config(page_title="CNN Character Recognition", layout="centered")
 st.title("CNN Character Recognition")
+st.warning(
+    "⚠️ The backend may take up to 50 seconds to wake up after a period of inactivity. "
+    "If the first prediction does not work, please wait a moment and refresh the page."
+)
 
 canvas_result = None
 uploaded_file = None
